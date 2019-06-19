@@ -221,19 +221,19 @@ dependencies {
 
 ![dep](https://user-gold-cdn.xitu.io/2019/5/9/16a9d25adee88f17?imageView2/0/w/1280/h/960/format/webp/ignore-error/1)
 
-##### 2.4.1 implementation
+#### 2.4.1 implementation 依赖
 
 当 module1 使用 implementation 依赖 module2 时，在 app 模块中无法引用到 Module2Api 类
 
 ![implementation](https://user-gold-cdn.xitu.io/2019/5/9/16a9d2621a9046a9?imageView2/0/w/1280/h/960/format/webp/ignore-error/1)
 
-##### 2.4.2 api 依赖
+#### 2.4.2 api 依赖
 
 当 module1 使用 api 依赖 module2 时，在 app 模块中可以正常引用到 Module2Api 类，如下图
 
 ![api](https://user-gold-cdn.xitu.io/2019/5/9/16a9d265c5985b46?imageView2/0/w/1280/h/960/format/webp/ignore-error/1)
 
-##### 2.4.3 compileOnly 依赖
+#### 2.4.3 compileOnly 依赖
 
 当 module1 使用 compileOnly 依赖 module2 时，在编译阶段 app 模块无法引用到 Module2Api 类，module1 中正常引用，但是在运行时会报错
 
@@ -243,12 +243,12 @@ dependencies {
 
 ![ompileOnly-apk](https://user-gold-cdn.xitu.io/2019/5/9/16a9d26e14209aa0?imageView2/0/w/1280/h/960/format/webp/ignore-error/1)
 
-##### 2.4.4 runtimeOnly 依赖
+#### 2.4.4 runtimeOnly 依赖
 当 module1 使用 runtimeOnly 依赖 module2 时，在编译阶段，module1 也无法引用到 Module2Api
 
 ![runtimeOnly](https://user-gold-cdn.xitu.io/2019/5/9/16a9d271fa13e976?imageView2/0/w/1280/h/960/format/webp/ignore-error/1)
 
-#### 2.5 flavor
+### 2.5 flavor
 
 在介绍下面的流程之前，先明确几个概念，`flavor`，`dimension`，`variant`
 
@@ -279,11 +279,11 @@ productFlavors {
 
 每个 `variant` 可以对应的使用 `variantImplementation` 来引入特定的依赖，比如：`bigBlueImplementation`，只有在 编译 bigBlue variant的时候才会引入
 
-### 3. Gradle Wrapper
+## 3. Gradle Wrapper
 
 ![gradle3](https://user-gold-cdn.xitu.io/2019/5/9/16a9d277be4d498c?imageView2/0/w/1280/h/960/format/webp/ignore-error/1)
 
-#### 3.1 gradlew/gradlew.bat
+### 3.1 gradlew/gradlew.bat
 
 这个文件用来下载特定版本的 gradle 然后执行的，就不需要开发者在本地再安装 gradle 了。
 
@@ -291,23 +291,447 @@ productFlavors {
 
 gradle wrapper 一般下载在 GRADLE_CACHE/wrapper/dists 目录下
 
-#### 3.2 gradle->wrapper->gradle-wrapper.properties
+### 3.2 gradle->wrapper->gradle-wrapper.properties
 
 是一些 gradlewrapper 的配置，其中用的比较多的就是 distributionUrl，可以执行 gradle 的下载地址和版本。
 
-#### 3.3 gradle->wrapper->gradle-wrapper.jar
+### 3.3 gradle->wrapper->gradle-wrapper.jar
 
 gradlewrapper 运行需要的依赖包
 
-### 4. gradle init.gradle
+## 4. gradle init.gradle
 
 ![gradle4](https://user-gold-cdn.xitu.io/2019/5/9/16a9d27ad6531dae?imageView2/0/w/1280/h/960/format/webp/ignore-error/1)
 
+在 gradle 里，有一种 init.gradle 比较特殊，这种脚本会在每个项目 build 之前先被调用，可以在其中做一些整体的初始化操作，比如配置 log 输出等等
 
+使用 init.gradle 的方法：
 
+1. 通过 `--init-script` 指定 `init.gradle` 位置 eg: `gradlew --init-script initdir/init.gradle`
+2. `init.gradle` 文件放在 `USER_HOME/.gradle/` 目录下
+3. `.gradle` 脚本放在 `USER_HOME/.gradle/init.d/` 目录下
+4. `.gradle` 脚本放在 `GRDALE_HOME/init.d/` 目录下
 
+## 5. Gradle 生命周期及回调
 
+![gradle5](https://user-gold-cdn.xitu.io/2019/5/9/16a9d27f47ad2e5f?imageView2/0/w/1280/h/960/format/webp/ignore-error/1)
 
+Gradle 构建分为三个阶段
 
+### 5.1 初始化阶段
 
+初始化阶段主要做的事情是有哪些项目需要被构建，然后为对应的项目创建 Project 对象
 
+### 5.2 配置阶段
+
+配置阶段主要做的事情是对上一步创建的项目进行配置，这时候会执行 build.gradle 脚本，并且会生成要执行的 task
+
+### 5.3 执行阶段
+
+执行阶段主要做的事情就是执行 task，进行主要的构建工作
+
+Gradle 在构建过程中，会提供一些列回调接口，方便在不同的阶段做一些事情，主要的接口有下面几个
+
+```groovy
+gradle.addBuildListener(new BuildListener() {
+    @Override
+    void buildStarted(Gradle gradle) {
+        println('构建开始')
+        // 这个回调一般不会调用，因为我们注册的时机太晚，注册的时候构建已经开始了，是 gradle 内部使用的
+    }
+
+    @Override
+    void settingsEvaluated(Settings settings) {
+        println('settings 文件解析完成')
+    }
+
+    @Override
+    void projectsLoaded(Gradle gradle) {
+        println('项目加载完成')
+        gradle.rootProject.subprojects.each { pro ->
+            pro.beforeEvaluate {
+                println("${pro.name} 项目配置之前调用")
+            }
+            pro.afterEvaluate{
+                println("${pro.name} 项目配置之后调用")
+            }
+        }
+    }
+
+    @Override
+    void projectsEvaluated(Gradle gradle) {
+        println('项目解析完成')
+    }
+
+    @Override
+    void buildFinished(BuildResult result) {
+        println('构建完成')
+    }
+})
+
+gradle.taskGraph.whenReady {
+    println("task 图构建完成")
+}
+gradle.taskGraph.beforeTask {
+    println("每个 task 执行前会调这个接口")
+}
+gradle.taskGraph.afterTask {
+    println("每个 task 执行完成会调这个接口")
+}
+```
+
+## 6. 自定义 task
+
+![gradle6](https://user-gold-cdn.xitu.io/2019/5/9/16a9d286985e646d?imageView2/0/w/1280/h/960/format/webp/ignore-error/1)
+
+默认创建的 task 继承自 `DefaultTask`
+
+### 6.1 如何声明一个Task
+
+```groovy
+task myTask {
+    println 'myTask in configuration'
+    doLast {
+        println 'myTask in run'
+    }
+}
+
+class MyTask extends DefaultTask {
+    @Input Boolean myInputs
+    @Output 
+    @TaskAction
+    void start() {
+    }
+}
+
+tasks.create("mytask").doLast {
+}
+```
+
+### 6.2 Task 的一些重要方法分类
+
+- Task 行为
+  - Task.doFirst
+  - Task.doLast
+- Task 依赖顺序
+  - Task.dependsOn
+  - Task.mustRunAfter
+  - Task.shouldRunAfter
+  - Task.finalizedBy
+- Task 的分组描述
+  - Task.group
+  - Task.description
+- Task 是否可用
+  - Task.enable
+- Task 输入输出
+  - Gradle 会比较 Task 的 inputs 和 outputs 来决定 task 是否是最新的，如果 inputs 和 outputs 没有变化，则认为 task 是最新的，task 就会跳过不执行
+  - Task.inputs
+  - Task.outputs
+- Task 是否执行
+  - 可以通过指定 Task.upToDateWhen = false 来强制 task 执行 Task.upToDateWhen
+
+比如要指定 Task 之间的依赖顺序，写法如下
+
+```groovy
+task task1 {
+    doLast {
+        println('task2')
+    }
+}
+task task2 {
+    doLast {
+        println('task2')
+    }
+}
+task1.finalizedBy(task2)
+task1.dependsOn(task2)
+task1.mustRunAfter(task2)
+task1.shouldRunAfter(task2)
+task1.finalizedBy(task2)
+```
+
+## 7. Android transform
+
+![gradle7](https://user-gold-cdn.xitu.io/2019/5/9/16a9d28a3f854dc9?imageView2/0/w/1280/h/960/format/webp/ignore-error/1)
+
+`Android Gradle Plugin` 提供了 transform api 用来在 .class to dex 过程中对 class 进行处理，可以理解为一种特殊的 Task，因为 transform 最终也会转化为 Task 去执行
+
+要实现 transform 需要继承 `com.android.build.api.transform.Transform` 并实现其方法，实现了 Transform 以后，要想应用，就调用 `project.android.registerTransform()`
+
+```groovy
+public class MyTransform extends Transform {
+    @Override
+    public String getName() {
+        // 返回 transform 的名称，最终的名称会是 transformClassesWithMyTransformForDebug 这种形式   
+        return "MyTransform";
+    }
+
+    @Override
+    public Set<QualifiedContent.ContentType> getInputTypes() {
+        /**
+        返回需要处理的数据类型 有 下面几种类型可选
+        public static final Set<ContentType> CONTENT_CLASS = ImmutableSet.of(CLASSES);
+        public static final Set<ContentType> CONTENT_JARS = ImmutableSet.of(CLASSES, RESOURCES);
+        public static final Set<ContentType> CONTENT_RESOURCES = ImmutableSet.of(RESOURCES);
+        public static final Set<ContentType> CONTENT_NATIVE_LIBS = ImmutableSet.of(NATIVE_LIBS);
+        public static final Set<ContentType> CONTENT_DEX = ImmutableSet.of(ExtendedContentType.DEX);
+        public static final Set<ContentType> DATA_BINDING_ARTIFACT = ImmutableSet.of(ExtendedContentType.DATA_BINDING);
+        */
+        return TransformManager.CONTENT_CLASS;
+    }
+
+    @Override
+    public Set<? super QualifiedContent.Scope> getScopes() {
+        /**
+        返回需要处理内容的范围，有下面几种类型
+        PROJECT(1), 只处理项目的内容
+        SUB_PROJECTS(4), 只处理子项目
+        EXTERNAL_LIBRARIES(16), 只处理外部库
+        TESTED_CODE(32), 只处理当前 variant 对应的测试代码
+        PROVIDED_ONLY(64), 处理依赖
+        @Deprecated
+        PROJECT_LOCAL_DEPS(2),
+        @Deprecated
+        SUB_PROJECTS_LOCAL_DEPS(8);
+        */
+        return Sets.immutableEnumSet(QualifiedContent.Scope.PROJECT);
+    }
+
+    @Override
+    public boolean isIncremental() {
+        // 是否增量，如果返回 true，TransformInput 会包括一份修改的文件列表，返回 false，会进行全量编译，删除上一次的输出内容
+        return false;
+    }
+
+    @Override
+    void transform(TransformInvocation transformInvocation) throws TransformException, InterruptedException, IOException {
+        // 在这里处理 class
+        super.transform(transformInvocation)
+        // 在 transform 里，如果没有任何修改，也要把 input 的内容输出到 output，否则会报错
+        for (TransformInput input : transformInvocation.inputs) {
+            input.directoryInputs.each { dir ->
+                // 获取对应的输出目录
+                File output = transformInvocation.outputProvider.getContentLocation(dir.name, dir.contentTypes, dir.scopes, Format.DIRECTORY)
+                dir.changedFiles // 增量模式下修改的文件
+                dir.file // 获取输入的目录
+                FileUtils.copyDirectory(dir.file, output) // input 内容输出到 output
+            }
+            input.jarInputs.each { jar ->
+                // 获取对应的输出 jar
+                File output = transformInvocation.outputProvider.getContentLocation(jar.name, jar.contentTypes, jar.scopes, Format.JAR)
+                jar.file // 获取输入的 jar 文件
+                FileUtils.copyFile(jar.file, output) // input 内容输出到 output
+            }
+        }
+    }
+}
+
+// 注册 transform
+android.registerTransform(new MyTransform())
+```
+
+在 transform 中的处理，一般会涉及到 class 文件的修改，操纵字节码的工具一般是 javasist 和 asm 居多，这两个工具在这里先不介绍了。后面有机会会展开说一下
+
+## 8. 自己写 Plugin
+
+![gradle8](https://user-gold-cdn.xitu.io/2019/5/9/16a9d28e12e6e5f4?imageView2/0/w/1280/h/960/format/webp/ignore-error/1)
+
+Gradle 的插件可以看作是一系列 Task 的集合
+
+在 Android 工程的 build.gradle 脚本里，第一行就是 `apply plugin: 'com.android.application'`，这个就是引入 Android Gradle 插件，插件里有 Android 打包相关的 Task
+
+关于 Android Gradle Plugin 的源码分析，在后面会讲到，现在先看看如何实现一个自己的 Plugin
+
+### 8.1 初始化工程
+
+1. 在 Android Studio 中创建一个 java module
+2. 在 `src/main` 目录下创建 `groovy` 目录，然后创建自己的包名和插件类
+3. 在 `src/main` 目录下创建 `resources/META-INFO/gradle-plugins` 目录，创建 `myplugin.properties` 文件，文件里内容是
+
+``` groovy
+implementation-class=com.zy.plugin.MyPlugin // 这里是自己的插件类
+```
+
+4. 修改 `build.gradle` 文件
+
+``` groovy
+// 引入 groovy 和 java 插件
+apply plugin: 'groovy'
+apply plugin: 'java'
+
+buildscript {
+    repositories {
+        mavenLocal()
+        maven { url 'http://depot.sankuai.com/nexus/content/groups/public/' }
+        maven { url 'https://maven.google.com' }
+        jcenter()
+    }
+}
+
+repositories {
+    mavenLocal()
+    maven {
+        url "http://mvn.dianpingoa.com/android-nova"
+    }
+    maven {
+        url 'http://depot.sankuai.com/nexus/content/groups/public/'
+    }
+    maven { url 'https://maven.google.com' }
+}
+
+dependencies {
+    compile gradleApi()
+    compile localGroovy()
+    compile 'com.android.tools.build:gradle:3.0.1'
+}
+```
+
+现在为止，项目结构是这个样子的
+
+![gradle-plugins](https://user-gold-cdn.xitu.io/2019/5/9/16a9d29255ff05e6?imageView2/0/w/1280/h/960/format/webp/ignore-error/1)
+
+### 8.2 创建 Plugin
+
+在刚才创建的插件类里，就可以写插件的代码了。插件类继承 `Plugin`，并实现 `apply` 接口，`apply` 就是在 `build.gradle` 里 `apply plugin 'xxx'` 的时候要调用的接口了
+
+插件开发可以使用 `groovy` 和 `java`，使用 `groovy` 的话可以有更多的语法糖，开发起来更方便一些
+
+``` groovy
+package com.zy.plugin
+
+import org.gradle.api.Plugin
+import org.gradle.api.Project
+
+class MyPlugin implements Plugin<Project> {
+
+    @Override
+    void apply(Project project) {
+        println("apply my plugin")
+    }
+}
+```
+
+### 8.3 创建插件的 Task
+
+我们再定义一个 task 类 `MyTask`，继承自 `DefaultTask`，简单的输出一些信息
+
+``` groovy
+package com.zy.plugin
+
+import org.gradle.api.DefaultTask
+import org.gradle.api.tasks.TaskAction
+
+class MyTask extends DefaultTask {
+
+    @TaskAction
+    void action() {
+        println('my task run')
+    }
+}
+```
+
+然后在 plugin 中注册这个 task
+
+``` groo
+class MyPlugin implements Plugin<Project> {
+
+    @Override
+    void apply(Project project) {
+        println("apply my plugin")
+        project.tasks.create("mytask", MyTask.class)
+    }
+}
+```
+
+### 8.4 本地安装插件
+
+这样一个简单的插件就开发好了，如何使用呢？
+
+我们首先需要在 `build.gradle` 中引入 `maven` 插件，并且配置 `install` 相关的属性
+
+``` groovy
+apply plugin: 'maven'
+
+install {
+    repositories.mavenInstaller {
+        pom.version = '0.0.1' // 配置插件版本号
+        pom.artifactId = 'myplugin' // 配置插件标识
+        pom.groupId = 'com.zy.plugin' // 配置插件组织
+    }
+}
+```
+
+之后执行 `./gradlew install` 便会把插件安装在本地 `maven` 仓库
+
+之后在使用的地方引入我们插件的 `classpath`
+
+``` groovy
+classpath 'com.zy.plugin:myplugin:0.0.1'
+```
+
+之后加载插件
+
+``` groovy
+apply plugin; 'myplugin' // 这里的 myplugin 是前面说的 myplugin.properties 的名字
+```
+
+然后运行 `./gradlew tasks --all | grep mytask`，就可以看到我们在 plugin 里新增的 task 了
+`./gradlew mytasks` 就可以执行 `task` 了
+
+### 8.5 打包发布
+
+在插件 `build.gradle` 里新增上传的配置如下
+
+``` groovy
+uploadArchives {
+    repositories {
+        mavenDeployer {
+            repository(url: "mavenUrl")
+            pom.version = '0.0.1'
+            pom.artifactId = 'myplugin'
+        }
+    }
+}
+```
+
+运行 `./gradlew uploadArchives` 就可以了
+
+### 8.6 调试插件
+
+那么开发插件的时候如何调试呢？
+
+1. 首先在 as 中新增一个 remote 配置
+
+![debug1](https://user-gold-cdn.xitu.io/2019/5/9/16a9d29c4893f42f?imageView2/0/w/1280/h/960/format/webp/ignore-error/1)
+
+![debug2](https://user-gold-cdn.xitu.io/2019/5/9/16a9d29e689989d4?imageView2/0/w/1280/h/960/format/webp/ignore-error/1)
+
+2. 之后在执行 task 的时候增加下面的参数
+
+``` groovy
+./gradlew app:mytask -Dorg.gradle.debug=true
+```
+
+此时可以看到 gradle 在等待 debug 进程连接
+
+![debug3](https://user-gold-cdn.xitu.io/2019/5/9/16a9d2a1f692f78d?imageView2/0/w/1280/h/960/format/webp/ignore-error/1)
+
+3. 之后在插件代码中打好断点，在 as 中点击 debug 按钮，就可以调试插件代码了
+
+![debug4](https://user-gold-cdn.xitu.io/2019/5/9/16a9d2a56a8dfaec?imageView2/0/w/1280/h/960/format/webp/ignore-error/1)
+
+## 9. 重点总结
+
+主要要点如下图：
+
+![gradle8](https://user-gold-cdn.xitu.io/2019/5/9/16a9d2a832742ec2?imageView2/0/w/1280/h/960/format/webp/ignore-error/1)
+
+其中一定要掌握的如下：
+
+1. gradle dsl 查询地址：https://docs.gradle.org/current/dsl/index.html
+2. android gradle plugin dsl 查询地址：http://google.github.io/android-gradle-dsl/current/
+3. gradle 构建生命周期和回调
+4. implementation / api
+5. flavor
+6. 自定义 Task
+7. 自定义 Transform 和 自定义插件可以作为扩展内容
