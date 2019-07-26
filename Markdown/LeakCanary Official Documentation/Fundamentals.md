@@ -36,7 +36,7 @@ LeakCanary的基础是一个名为LeakSentry的库。LeakSentry挂钩到Android�
 
 ### 分析堆
 
-LeakCanary解析.hprof文件并找到防止保留实例被垃圾收集的引用链：泄漏跟踪。泄漏跟踪也就是从垃圾收集根到保留实例的最短强引用路径的另一种说法。一旦确定了泄漏跟踪，LeakCanary就会利用其内置的Android框架知识来推断泄漏跟踪中的哪些实例正在泄漏。
+LeakCanary解析.hprof文件并找到防止保留实例被垃圾收集的引用链：泄漏跟踪。泄漏跟踪也就是从GC Root到保留实例的最短强引用路径的另一种说法。一旦确定了泄漏跟踪，LeakCanary就会利用其内置的Android框架知识来推断泄漏跟踪中的哪些实例正在泄漏。
 
 ### 将泄漏分组
 
@@ -78,3 +78,132 @@ LeakCanary解析.hprof文件并找到防止保留实例被垃圾收集的引用�
 is true)
 ```
 
+### 对象和引用
+
+```
+├─ android.widget.TextView
+```
+
+泄漏跟踪中的每个节点都是Java对象，可以是类，对象数组或实例。
+
+```
+│    ↓ TextView.mContext
+```
+
+继续向下，每个节点都有一个对下一个节点的引用。 在UI中，该引用为紫色。 在Logcat表示中，引用位于以向下箭头开头的行上。
+
+### GC Root
+
+```
+    ┬
+    ├─ leakcanary.internal.InternalLeakCanary
+    │    Leaking: NO (it's a GC root and a class is never leaking)
+```
+
+泄漏跟踪的顶部是GC Root。 GC Root是始终可访问的特殊对象。 有四种GC Root值得一提：
+
+- 局部变量，属于线程的堆栈。
+- 活跃的Java线程的实例。
+- 从未在Android上卸载的类。
+- 本地引用，由本地代码控制。
+
+### 泄漏实例
+
+```
+    ╰→ com.example.leakcanary.MainActivity
+    ​     Leaking: YES (RefWatcher was watching this and MainActivity#mDestroyed
+is true)
+```
+
+泄漏跟踪的底部是泄漏实例。 这个实例被传递给`RefWatcher.watch()`以确认它将被垃圾收集，并且最终没有被垃圾收集，这触发了LeakCanary。
+
+### 引用链
+
+```
+...
+    │    ↓ static InternalLeakCanary.application
+...
+    │    ↓ ExampleApplication.leakedViews
+...
+    │    ↓ ArrayList.elementData
+...
+    │    ↓ array Object[].[0]
+...
+    │    ↓ TextView.mContext
+...
+```
+
+从GC Root到泄漏实例的引用链是阻止泄漏实例被垃圾收集的原因。 如果您可以识别在该时间点不应存在的引用，那么您可以找出为什么它仍然错误地设置然后修复内存泄漏。
+
+### 启发式和标签
+
+```
+    ├─ android.widget.TextView
+    │    Leaking: YES (View detached and has parent)
+    │    View#mAttachInfo is null (view detached)
+    │    View#mParent is set
+    │    View.mWindowAttachCount=1
+```
+
+LeakCanary运行启发式方法来确定泄漏跟踪节点的生命周期状态，从而确定它们是否泄漏。
+
+例如，如果视图具有`View#mAttachInfo = null`和`mParent!= null`，那么它将被分离但具有父级，因此该视图可能正在泄漏。在泄漏跟踪中，对于每个节点，您将看到`Leaking: YES / NO / UNKNOWN`，括号中有解释。LeakCanary还可以显示有关节点状态的额外信息，例如，`View.mWindowAttachCount=1`。您可以通过更新`LeakCanary.Config.leakTraceInspectors`来自定义此行为并添加您自己的启发式方法。
+
+### 缩小泄漏原因
+
+```
+    ┬
+    ├─ leakcanary.internal.InternalLeakCanary
+    │    Leaking: NO (it's a GC root and a class is never leaking)
+    │    ↓ static InternalLeakCanary.application
+    ├─ com.example.leakcanary.ExampleApplication
+    │    Leaking: NO (Application is a singleton)
+    │    ↓ ExampleApplication.leakedViews
+    │                         ~~~~~~~~~~~
+    ├─ java.util.ArrayList
+    │    Leaking: UNKNOWN
+    │    ↓ ArrayList.elementData
+    │                ~~~~~~~~~~~
+    ├─ java.lang.Object[]
+    │    Leaking: UNKNOWN
+    │    ↓ array Object[].[0]
+    │                     ~~~
+    ├─ android.widget.TextView
+    │    Leaking: YES (View detached and has parent)
+    │    ↓ TextView.mContext
+    ╰→ com.example.leakcanary.MainActivity
+    ​     Leaking: YES (RefWatcher was watching this and MainActivity#mDestroyed is true)
+```
+
+如果一个节点没有泄漏，那么指向它的任何先前引用都不是泄漏源，也不会泄漏。同样，如果一个节点泄漏，那么泄漏跟踪下的任何节点也会泄漏。由此，我们可以推断泄漏是由最后一次`Leaking: NO`和第一次`Leaking: YES`之前。
+
+LeakCanary突出显示UI中带有红色下划线的引用，或者Logcat表示中的~~~~下划线。这些突出显示的参考是泄漏的唯一可能原因。 这些是你应该花时间调查的。
+
+在这个例子中，最后一个`Leaking：NO在com.example.leakcanary.ExampleApplication`上，第一个`Leaking：YES`在`android.widget.TextView`上，所以泄漏是由它们之间的3个引用之一引起的：
+
+```
+...
+    │    ↓ ExampleApplication.leakedViews
+    │                         ~~~~~~~~~~~
+...
+    │    ↓ ArrayList.elementData
+    │                ~~~~~~~~~~~
+...
+    │    ↓ array Object[].[0]
+    │                     ~~~
+...
+```
+
+查看源代码，我们可以看到ExampleApplication有一个列表字段：
+
+```kotlin
+open class ExampleApplication : Application() {
+  val leakedViews = mutableListOf<View>()
+}
+```
+
+ArrayList实现本身不太可能存在错误，因此我们正在向`ExampleApplication.leakedViews`添加视图，因此发生了泄漏。 如果我们停止这样做，我们就修复了泄漏！
+
+### 寻求有关泄漏的帮助
+
+如果您无法找出泄漏，请不要提出issue。 而是使用leakcanary标记创建Stack Overflow问题。
