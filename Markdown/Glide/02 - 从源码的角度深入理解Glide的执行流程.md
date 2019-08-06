@@ -230,3 +230,59 @@ public class RequestManagerRetriever implements Handler.Callback {
 ```
 
 上述代码虽然看上去逻辑有点复杂，但是将它们梳理清楚后还是很简单的。RequestManagerRetriever类中看似有很多个get()方法的重载，什么Context参数，Activity参数，Fragment参数等等，实际上只有两种情况而已，即传入Application类型的参数，和传入非Application类型的参数。
+
+我们先来看传入Application参数的情况。如果在Glide.with()方法中传入的是一个Application对象，那么这里就会调用带有Context参数的get()方法重载，然后会在第44行调用getApplicationManager()方法来获取一个RequestManager对象。其实这是最简单的一种情况，因为Application对象的生命周期即应用程序的生命周期，因此Glide并不需要做什么特殊的处理，它自动就是和应用程序的生命周期是同步的，如果应用程序关闭的话，Glide的加载也会同时终止。
+
+接下来我们看传入非Application参数的情况。不管你在Glide.with()方法中传入的是Activity、FragmentActivity、v4包下的Fragment、还是app包下的Fragment，最终的流程都是一样的，那就是会向当前的Activity当中添加一个隐藏的Fragment。具体添加的逻辑是在上述代码的第117行和第141行，分别对应的app包和v4包下的两种Fragment的情况。那么这里为什么要添加一个隐藏的Fragment呢？因为Glide需要知道加载的生命周期。很简单的一个道理，如果你在某个Activity上正在加载着一张图片，结果图片还没加载出来，Activity就被用户关掉了，那么图片还应该继续加载吗？当然不应该。可是Glide并没有办法知道Activity的生命周期，于是Glide就使用了添加隐藏Fragment的这种小技巧，因为Fragment的生命周期和Activity是同步的，如果Activity被销毁了，Fragment是可以监听到的，这样Glide就可以捕获这个事件并停止图片加载了。
+
+这里额外再提一句，从第48行代码可以看出，如果我们是在非主线程当中使用的Glide，那么不管你是传入的Activity还是Fragment，都会被强制当成Application来处理。不过其实这就属于是在分析代码的细节了，本篇文章我们将会把目光主要放在Glide的主线工作流程上面，后面不会过多去分析这些细节方面的内容。
+
+总体来说，第一个with()方法的源码还是比较好理解的。其实就是为了得到一个RequestManager对象而已，然后Glide会根据我们传入with()方法的参数来确定图片加载的生命周期，并没有什么特别复杂的逻辑。不过复杂的逻辑还在后面等着我们呢，接下来我们开始分析第二步，load()方法。
+
+### load()
+
+由于`with()`方法返回的是一个`RequestManager`对象，那么很容易就能想到，`load()`方法是在`RequestManager`类当中的，所以说我们首先要看的就是`RequestManager`这个类。不过在上一篇文章中我们学过，`Glide`是支持图片`URL`字符串、图片本地路径等等加载形式的，因此`RequestManager`中也有很多个`load()`方法的重载。但是这里我们不可能把每个`load()`方法的重载都看一遍，因此我们就只选其中一个加载图片URL字符串的`load()`方法来进行研究吧。
+
+RequestManager类的简化代码如下所示：
+
+```java
+public class RequestManager implements LifecycleListener {
+		...
+    public DrawableTypeRequest<String> load(String string) {
+        return (DrawableTypeRequest<String>) fromString().load(string);
+    }
+ 
+    public DrawableTypeRequest<String> fromString() {
+        return loadGeneric(String.class);
+    }
+
+    private <T> DrawableTypeRequest<T> loadGeneric(Class<T> modelClass) {
+      ModelLoader<T, InputStream> streamModelLoader = Glide.buildStreamModelLoader(modelClass, context);
+      ModelLoader<T, ParcelFileDescriptor> fileDescriptorModelLoader = Glide.buildFileDescriptorModelLoader(modelClass, context);
+      if (modelClass != null && streamModelLoader == null && fileDescriptorModelLoader == null) {
+        throw new IllegalArgumentException("Unknown type " + modelClass + ". You must provide a Model of a type for" + " which there is a registered ModelLoader, if you are using a custom model, you must first call" + " Glide#register with a ModelLoaderFactory for your custom model class");
+      }
+      return optionsApplier.apply( new DrawableTypeRequest<T>(modelClass, streamModelLoader, fileDescriptorModelLoader, context, glide, requestTracker, lifecycle, optionsApplier));
+    }
+}
+```
+
+RequestManager类的代码是非常多的，但是经过我这样简化之后，看上去就比较清爽了。在我们只探究加载图片URL字符串这一个load()方法的情况下，那么比较重要的方法就只剩下上述代码中的这三个方法。
+
+那么我们先来看load()方法，这个方法中的逻辑是非常简单的，只有一行代码，就是先调用了fromString()方法，再调用load()方法，然后把传入的图片URL地址传进去。而fromString()方法也极为简单，就是调用了loadGeneric()方法，并且指定参数为String.class，因为load()方法传入的是一个字符串参数。那么看上去，好像主要的工作都是在loadGeneric()方法中进行的了。
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

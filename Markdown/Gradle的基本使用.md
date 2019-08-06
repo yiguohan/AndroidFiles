@@ -33,7 +33,7 @@ gradle 是通过组织一系列 task 来最终完成自动化构建的，所以 
 
 gradle 可以类比做一条流水线，task 可以比作流水线上的机器人，每个机器人负责不同的事情，最终生成完整的构建产物
 
-![gradle-pipelining](https://user-gold-cdn.xitu.io/2019/5/9/16a9d23033ef5cd4?imageView2/0/w/1280/h/960/format/webp/ignore-error/1)
+![gradle1](https://user-gold-cdn.xitu.io/2019/5/9/16a9d22bcaca4164?imageView2/0/w/1280/h/960/format/webp/ignore-error/1)
 
 ### 1.2 Gradle 脚本使用了 Groovy 或者 Kotlin DSL
 
