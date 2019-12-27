@@ -792,3 +792,520 @@ println androidManifest.@'android:versionName'
 作为一门语言，Groovy是复杂的，是需要深入学习和钻研的。一本厚书甚至都无法描述Groovy的方方面面。
 
 Anyway，从使用角度看，尤其是又限定在Gradle这个领域内，能用到的都是Groovy中一些简单的知识
+
+## 4. Gradle介绍
+
+现在正式进入Gradle。Gradle是一个工具，同时它也是一个编程框架。前面也提到过，使用这个工具可以完成app的编译打包等工作。当然你也可以用它干其他的事情。
+
+Gradle是什么？学习它到什么地步就可以了？
+
+> 看待问题的时候，所站的角度非常重要。
+>
+> 当你把Gradle当工具看的时候，我们只想着如何用好它。会写、写好配置脚本就OK
+>
+> 当你把它当做编程框架看的时候，你可能需要学习很多更深入的内容。另外，今天我们把它当工具看，明天因为需求发生变化，我们可能又得把它当编程框架看。
+
+### 4.1 Gradle开发环境部署
+
+Gradle的官网：http://gradle.org/
+
+文档位置：https://docs.gradle.org/current/release-notes。其中的*UserGuide*和*DSL Reference*很关键。User Guide就是介绍Gradle的一本书，而DSL Reference是Gradle API的说明。
+
+以Ubuntu为例，下载Gradle：*http://gradle.org/gradle-download/* 选择Completedistribution和Binary only distribution都行。然后解压到指定目录。
+
+最后，设置~/.bashrc，把Gradle加到PATH里，如图20所示：
+
+![img](https://img-blog.csdn.net/20150905194121511?watermark/2/text/aHR0cDovL2Jsb2cuY3Nkbi5uZXQv/font/5a6L5L2T/fontsize/400/fill/I0JBQkFCMA==/dissolve/70/gravity/Center)
+
+执行source ~/.bashrc，初始化环境。
+
+执行gradle --version，如果成功运行就OK了。
+
+注意，为什么说Gradle是一个编程框架？来看它提供的API文档：
+
+https://docs.gradle.org/current/javadoc/org/gradle/api/Project.html
+
+![img](https://img-blog.csdn.net/20150905194136650?watermark/2/text/aHR0cDovL2Jsb2cuY3Nkbi5uZXQv/font/5a6L5L2T/fontsize/400/fill/I0JBQkFCMA==/dissolve/70/gravity/Center)
+
+原来，我们编写所谓的编译脚本，其实就是玩Gradle的API....所以它从更底层意义上看，是一个编程框架！
+
+既然是编程框架，我在讲解Gradle的时候，尽量会从API的角度来介绍。有些读者肯定会不耐烦，为嘛这么费事？
+
+从我个人的经历来看：因为我从网上学习到的资料来看，几乎全是从脚本的角度来介绍Gradle，结果学习一通下来，只记住参数怎么配置，却不知道它们都是函数调用，都是严格对应相关API的。
+
+而从API角度来看待Gradle的话，有了SDK文档，你就可以编程。编程是靠记住一行行代码来实现的吗？不是，是在你掌握大体流程，然后根据SDK+API来完成的！
+
+其实，Gradle自己的User Guide也明确说了：
+
+Buildscripts are code
+
+### 4.2 基本组件
+
+Gradle是一个框架，它定义一套自己的游戏规则。我们要玩转Gradle，必须要遵守它设计的规则。下面我们来讲讲Gradle的基本组件：
+
+Gradle中，每一个待编译的工程都叫一个Project。每一个Project在构建的时候都包含一系列的Task。比如一个Android APK的编译可能包含：Java源码编译Task、资源编译Task、JNI编译Task、lint检查Task、打包生成APK的Task、签名Task等。
+
+一个Project到底包含多少个Task，其实是由编译脚本指定的插件决定。插件是什么呢？插件就是用来定义Task，并具体执行这些Task的东西。
+
+刚才说了，Gradle是一个框架，作为框架，它负责定义流程和规则。而具体的编译工作则是通过插件的方式来完成的。比如编译Java有Java插件，编译Groovy有Groovy插件，编译Android APP有Android APP插件，编译Android Library有Android Library插件
+
+好了。到现在为止，你知道Gradle中每一个待编译的工程都是一个Project，一个具体的编译过程是由一个一个的Task来定义和执行的。
+
+#### 4.2.1 一个重要的例子
+
+下面我们来看一个实际的例子。这个例子非常有代表意义。下图是一个名为posdevice的目录。这个目录里包含3个Android Library工程，2个Android APP工程。
+
+![img](https://img-blog.csdn.net/20150905194157628?watermark/2/text/aHR0cDovL2Jsb2cuY3Nkbi5uZXQv/font/5a6L5L2T/fontsize/400/fill/I0JBQkFCMA==/dissolve/70/gravity/Center)
+
+在上图的例子中：
+
+-  CPosDeviceSdk、CPosSystemSdk、CPosSystemSdkxxxImpl是Android Library。其中，CPosSystemSdkxxxImpl依赖CPosSystemSdk
+- CPosDeviceServerApk和CPosSdkDemo是Android APP。这些App和SDK有依赖关系。CPosDeviceServerApk依赖CPosDeviceSdk，而CPosSdkDemo依赖所有的Sdk Library。
+
+> 请回答问题，在上面这个例子中，有多少个Project？
+>
+> 请回答问题，在上面这个例子中，有多少个Project？
+>
+> 请回答问题，在上面这个例子中，有多少个Project？
+
+答案是：每一个Library和每一个App都是单独的Project。根据Gradle的要求，每一个Project在其根目录下都需要有一个build.gradle。build.gradle文件就是该Project的编译脚本，类似于Makefile。
+
+看起来好像很简单，但是请注意：posdevice虽然包含5个独立的Project，但是要独立编译他们的话，得：
+
+- cd 某个Project的目录。比如 cd CPosDeviceSdk
+- 然后执行 gradle xxxx（xxx是任务的名字。对Android来说，assemble这个Task会生成最终的产物，所以 gradle assemble）
+
+这很麻烦啊，有10个独立Project，就得重复执行10次这样的命令。更有甚者，所谓的独立Project其实有依赖关系的。比如我们这个例子。
+
+那么，我想在posdevice目录下，直接执行gradle assemble，是否能把这5个Project的东西都编译出来呢？
+
+答案自然是可以。在Gradle中，这叫*Multi-Projects Build*。把posdevice改造成支持Gradle的Multi-Projects Build很容易，需要：
+
+- 在posdevice下也添加一个build.gradle。这个build.gradle一般干得活是：配置其他子Project的。比如为子Project添加一些属性。这个build.gradle有没有都无所属。
+- 在posdevice下添加一个名为settings.gradle。这个文件很重要，名字必须是settings.gradle。它里边用来告诉Gradle，这个multiprojects包含多少个子Project。
+
+来看settings.gradle的内容，最关键的内容就是告诉Gradle这个multiprojects包含哪些子projects:
+
+```groovy
+include 'CPosSystemSdk','CPosDeviceSdk','CPosSdkDemo','CPosDeviceServerApk','CPosSystemSdkxxxPosImpl'
+```
+
+> 强烈建议：
+>
+> 如果你确实只有一个Project需要编译，我也建议你在目录下添加一个settings.gradle。我们团队内部的所有单个Project都已经改成支持Multiple-Project Build了。改得方法就是添加settings.gradle，然后include对应的project名字。
+
+另外，settings.gradle除了可以include外，还可以设置一些函数。这些函数会在gradle构建整个工程任务的时候执行，所以，可以在settings做一些初始化的工作。比如：我的settings.gradle的内容：
+
+```groovy
+//定义一个名为initMinshengGradleEnvironment的函数。该函数内部完成一些初始化操作
+//比如创建特定的目录，设置特定的参数等
+def initMinshengGradleEnvironment(){
+    println"initialize Minsheng Gradle Environment ....."
+    ......//干一些special的私活....
+    println"initialize Minsheng Gradle Environment completes..."
+}
+//settings.gradle加载的时候，会执行initMinshengGradleEnvironment
+initMinshengGradleEnvironment()
+//include也是一个函数：
+include 'CPosSystemSdk','CPosDeviceSdk','CPosSdkDemo','CPosDeviceServerApk','CPosSystemSdkxxxPosImpl'
+
+```
+
+#### 4.2.2 Gradle命令介绍
+
+1. gradle projects 查看工程信息
+
+   到目前为止，我们了解Gradle什么呢？
+
+   - 每一个Project都必须设置一个build.gradle文件。至于其内容，我们留到后面再说。
+   - 对于multi-projects build，需要在根目录下也放一个build.gradle，和一个settings.gradle。
+   - 一个Project是由若干taskes来组成的，当`gradle xxx`的时候，实际上是要求gradle执行xxx任务。这个任务就能完成具体的工作。
+   - 当然，具体的工作和不同的插件有关系。编译Java要使用Java插件，编译Android App需要使用Android App插件。这些我们都留待后续讨论
+
+   Gradle 提供一些方便命令来查看和Project/Task相关的信息。比如在posdevice中，我想看这个multi-projects到底包含多少个子Project：
+
+   执行`gradle projects`，得到下图：
+
+   ![img](https://img-blog.csdn.net/20150905194216394?watermark/2/text/aHR0cDovL2Jsb2cuY3Nkbi5uZXQv/font/5a6L5L2T/fontsize/400/fill/I0JBQkFCMA==/dissolve/70/gravity/Center)
+
+   你看，multi-projects的情况下，posdevice这个目录对应的build.gradle叫Root Project，它包含5个子Project。
+
+   如果你修改settings.gradle，使得include只有一个参数，则gradle projects的子project也会变少，如下图：
+
+   ![img](https://img-blog.csdn.net/20150905194231875?watermark/2/text/aHR0cDovL2Jsb2cuY3Nkbi5uZXQv/font/5a6L5L2T/fontsize/400/fill/I0JBQkFCMA==/dissolve/70/gravity/Center)
+
+2. gradle tasks 查看任务信息
+
+   查看了Project信息，这个还比较简单，直接看settings.gradle也知道。那么Project包含哪些Task信息，怎么看呢？上面两张图最后的输出也告诉你了，想看某个Project包含哪些Task信息，只要执行：`gradle project-path:tasks`就行。注意，`project-path`是目录名，后面必须跟冒号。
+
+   对于 Multi-Project，在根目录中，需要指定你想看哪个project的任务。不过你要是已经cd到某个Project的目录了，则不需要指定Project-path。
+
+   来看下图：
+
+   ![img](https://img-blog.csdn.net/20150905194251964?watermark/2/text/aHR0cDovL2Jsb2cuY3Nkbi5uZXQv/font/5a6L5L2T/fontsize/400/fill/I0JBQkFCMA==/dissolve/70/gravity/Center)
+
+   上图是 `gradle CPosSystemSdk:tasks`的结果。
+
+   > cd CPosSystemSdk
+   >
+   > gradle tasks 得到同样的结果
+
+   CPosSystemSdk是一个Android Library工程，Android Library对应的插件定义了好多Task。每种插件定义的Task都不尽相同，这就是所谓的Domain Specific，需要我们对相关领域有比较多的了解。
+
+   这些都是后话，我们以后会详细介绍。
+
+3. gradle task-name 执行任务
+
+   上图中列出了好多任务，这时候就可以通过 gradle 任务名来执行某个任务。这和make xxx很像。比如：
+
+   - gradle clean是执行清理任务，和make clean类似。
+   - gradle properites用来查看所有属性信息。
+
+   `gradle tasks`会列出每个任务的描述，通过描述，我们大概能知道这些任务是干什么的，然后gradle task-name 执行它就好。
+
+   这里要强调一点：task和task之间往往是有关系的，这就是所谓的**依赖关系**。比如，assemble task就依赖其他task先执行，assemble才能完成最终的输出。
+
+   依赖关系对我们使用gradle有什么意义呢？
+
+   如果知道Task之间的依赖关系，那么开发者就可以添加一些定制化的Task。比如我为assemble添加一个SpecialTest任务，并指定assemble依赖于SpecialTest。当assemble执行的时候，就会先处理完它依赖的task。自然，SpecialTest就会得到执行了...
+
+   大家先了解这么多，等后面介绍如何写gradle脚本的时候，这就是调用几个函数的事情，Nothing Special!
+
+### 4.3 Gradle的工作流
+
+Gradle的工作流程其实蛮简单，用一个图来表达：
+
+![img](https://img-blog.csdn.net/20150905194317170?watermark/2/text/aHR0cDovL2Jsb2cuY3Nkbi5uZXQv/font/5a6L5L2T/fontsize/400/fill/I0JBQkFCMA==/dissolve/70/gravity/Center)
+
+上图告诉我们，Gradle工作包含三个阶段：
+
+- 首先是初始化阶段。对我们前面的multi-project build而言，就是执行settings.gradle
+- Initiliazation phase的下一个阶段是Configration阶段。
+- Configration阶段的目标是解析每个project中的build.gradle。比如multi-project build例子中，解析每个子目录中的build.gradle。在这两个阶段之间，我们可以加一些定制化的Hook。这当然是通过API来添加的。
+- Configuration阶段完了后，整个build的project以及内部的Task关系就确定了。嗯？前面说过，一个Project包含很多Task，每个Task之间有依赖关系。Configuration会建立一个**有向图**来描述Task之间的依赖关系。所以，我们可以添加一个HOOK，即当Task关系图建立好后，执行一些操作。
+- 最后一个阶段就是执行任务了。当然，任务执行完后，我们还可以加Hook。
+
+下面展示一下我按图26为posdevice项目添加的Hook，它的执行结果：
+
+![img](https://img-blog.csdn.net/20150905194338602?watermark/2/text/aHR0cDovL2Jsb2cuY3Nkbi5uZXQv/font/5a6L5L2T/fontsize/400/fill/I0JBQkFCMA==/dissolve/70/gravity/Center)
+
+我在：
+
+- settings.gradle加了一个输出。
+- 在posdevice的build.gradle加了beforeProject函数。
+- 在CPosSystemSdk加了taskGraph whenReady函数和buidFinished函数。
+
+好了，Hook的代码怎么写，估计你很好奇，而且肯定会埋汰，搞毛这么就还没告诉我怎么写Gradle。马上了！
+
+最后，关于Gradle的工作流程，你只要记住：
+
+- Gradle有一个初始化流程，这个时候settings.gradle会执行。
+- 在配置阶段，每个Project都会被解析，其内部的任务也会被添加到一个有向图里，用于解决执行过程中的依赖关系。
+- 然后才是执行阶段。你在gradle xxx中指定什么任务，gradle就会将这个xxx任务链上的所有任务全部按依赖顺序执行一遍！
+
+下面来告诉你怎么写代码！
+
+### 4.4 Gradle编程模型及API实例详解
+
+希望你在进入此节之前，一定花时间把前面内容看一遍。
+
+*https://docs.gradle.org/current/dsl/* <==这个文档很重要
+
+Gradle基于Groovy，Groovy又基于Java。所以，Gradle执行的时候和Groovy一样，会把脚本转换成Java对象。Gradle主要有三种对象，这三种对象和三种不同的脚本文件对应，在gradle执行的时候，会将脚本转换成对应的对象：
+
+- Gradle对象：当我们执行gradle xxx或者什么的时候，gradle会从默认的配置脚本中构造出一个Gradle对象。在整个执行过程中，只有这么一个对象。Gradle对象的数据类型就是Gradle。我们一般很少去定制这个默认的配置脚本。
+- Project对象：每一个build.gradle会转换成一个Project对象。
+- Settings对象：显然，每一个settings.gradle都会转换成一个Settings对象。
+
+注意，对于其他gradle文件，除非定义了class，否则会转换成一个实现了Script接口的对象。这一点和3.5节中Groovy的脚本类相似
+
+当我们执行gradle的时候，gradle首先是按顺序解析各个gradle文件。这里边就有所所谓的生命周期的问题，即先解析谁，后解析谁。下图是Gradle文档中对生命周期的介绍：结合上一节的内容，相信大家都能看明白了。现在只需要看红框里的内容：
+
+![img](https://img-blog.csdn.net/20150905194405209?watermark/2/text/aHR0cDovL2Jsb2cuY3Nkbi5uZXQv/font/5a6L5L2T/fontsize/400/fill/I0JBQkFCMA==/dissolve/70/gravity/Center)
+
+#### 4.4.1 Gradle对象
+
+我们先来看Gradle对象，它有哪些属性呢？如下图所示：
+
+![img](https://img-blog.csdn.net/20150905194421970?watermark/2/text/aHR0cDovL2Jsb2cuY3Nkbi5uZXQv/font/5a6L5L2T/fontsize/400/fill/I0JBQkFCMA==/dissolve/70/gravity/Center)
+
+我在posdevice build.gradle中和settings.gradle中分别加了如下输出：
+
+```groovy
+//在settings.gradle中，则输出"In settings,gradle id is"
+println "In posdevice, gradle id is " +gradle.hashCode()
+println "Home Dir:" + gradle.gradleHomeDir
+println "User Home Dir:" + gradle.gradleUserHomeDir
+println "Parent: " + gradle.parent
+```
+
+得到结果如图所示：
+
+![img](https://img-blog.csdn.net/20150905194440047?watermark/2/text/aHR0cDovL2Jsb2cuY3Nkbi5uZXQv/font/5a6L5L2T/fontsize/400/fill/I0JBQkFCMA==/dissolve/70/gravity/Center)
+
+- 你看，在settings.gradle和posdevice build.gradle中，我们得到的gradle实例对象的hashCode是一样的（都是791279786）。
+- HomeDir是我在哪个目录存储的gradle可执行程序。
+- User Home Dir：是gradle自己设置的目录，里边存储了一些配置文件，以及编译过程中的缓存文件，生成的类文件，编译中依赖的插件等等。
+
+Gradle的函数接口在文档中也有。
+
+#### 4.4.2 Project对象
+
+每一个`build.gradle`文件都会转换成一个Project对象。在Gradle术语中，Project对象对应的是`BuildScript`。
+
+Project包含若干Tasks。另外，由于Project对应具体的工程，所以需要为Project加载所需要的插件，比如为Java工程加载Java插件。其实，一个Project包含多少Task往往是插件决定的。
+
+所以，在Project中，我们要：
+
+- 加载插件
+- 不同插件有不同的行话，即不同的配置。我们要在Project中配置好，这样插件就知道从哪里读取源文件等
+- 设置属性
+
+1. 加载插件
+
+   Project的API位于https://docs.gradle.org/current/javadoc/org/gradle/api/Project.html。加载插件时调用它的`apply`函数。`apply`其实是Project实现`PluginAware`接口定义的：
+
+   ![img](https://img-blog.csdn.net/20150905194503216?watermark/2/text/aHR0cDovL2Jsb2cuY3Nkbi5uZXQv/font/5a6L5L2T/fontsize/400/fill/I0JBQkFCMA==/dissolve/70/gravity/Center)
+
+   
+
+   来看代码：
+
+   ```groovy
+   //apply函数的用法
+   //apply 是一个函数，此处调用的是上图中的最后一个apply重载。注意，Groovy支持函数调用的时候通过：
+   //参数名1：参数值1，参数名2：参数值2
+   //的方式来传递参数
+   
+   apply plugin:'com.android.library'//如果是编译Library，则加载此插件
+   apply plugin:'com.android.application'//如果是编译Android App，则加载此插件
+   ```
+
+   除了加载二进制的插件（上面的插件其实都是下载了对应的jar包，这也是通常意义上我们所理解的插件），还可以加载一个gradle文件。为什么要加载gradle文件呢？
+
+   其实这和代码的模块划分有关。一般而言，我会把一些通用的函数放到一个名叫utils.gradle文件里。然后在其他工程的build.gradle来加载这个utils.gradle。这样，通过一些处理，我就可以调用utils.gradle中定义的函数了。
+
+   加载utils.gradle插件的代码如下：
+
+   ```groovy
+   //utils.gradle是我封装的一个gradle脚本，里边定义了一些方便函数，比如读取AndroidManifest.xml中的versionName，或者是copy jar包/APK包到指定的目录
+   apply from: rootProject.getRootDir().getAbsolutePath() + "/utils.gradle"
+   ```
+
+   也是使用apply的最后一个重载。那么，apply最后一个函数到底支持哪些参数呢？还是得看下图的API说明：
+
+   ![img](https://img-blog.csdn.net/20150905194525120?watermark/2/text/aHR0cDovL2Jsb2cuY3Nkbi5uZXQv/font/5a6L5L2T/fontsize/400/fill/I0JBQkFCMA==/dissolve/70/gravity/Center)
+
+   我这里不遗余力的列出API图片，就是希望大家在写脚本的时候，碰到不会的，一定要去查看API文档！
+
+2. 设置属性
+
+   如果是单个脚本，则不需要考虑属性的跨脚本传播，但是Gradle往往包含不止一个build.gradle文件，比如我设置的utils.gradle，settings.gradle。如何在多个脚本中设置属性呢？
+
+   Gradle提供了一种名为extra property的方法。extra property是额外属性的意思，在第一次定义该属性的时候需要通过ext前缀来标示它是一个额外的属性。定义好之后，后面的存取就不需要ext前缀了。ext属性支持Project和Gradle对象。即Project和Gradle对象都可以设置ext属性
+
+   举个例子：
+
+   我在settings.gradle中想为Gradle对象设置一些外置属性，所以在initMinshengGradleEnvironment函数中
+
+   ```groovy
+   def initMinshengGradleEnvironment(){
+       //属性从local.properties中读取
+       Properties properties = new Properties()
+       File propertyFile = new File(rootDir.getAbsolutePath() + "/local.properties")
+       properties.load(propertyFile.newDataInputStream())
+       //gradle就是Gradle对象。它默认是Settings和Project的成员变量。可直接获取ext前缀，表明操作的是外置属性。
+       //api是一个新的属性名。前面说过，只在第一次定义或者设置它的时候需要ext前缀
+       gradle.ext.api = properties.getProperty('sdk.api')
+       println gradle.api//再次存取api的时候，就不需要ext前缀了
+       ......
+   }
+   ```
+
+   再来一个例子强化一下：
+
+   我在utils.gradle中定义了一些函数，然后想在其他build.gradle中调用这些函数。那该怎么做呢？
+
+   ```groovy
+   //utils.gradle
+   //utils.gradle中定义了一个获取AndroidManifest.xml versionName 的函数
+   def getVersionNameAdvanced(){
+       //下面这行代码中的project是谁？
+       def xmlFile = project.file("AndroidManifest.xml")
+       def rootManifest = new XmlSlurper().parse(xmlFile)
+       return rootManifest('@android:versionName')
+   }
+   //现在，想把这个API输出到各个Project。由于这个utils.gradle会被每一个Project Apply，所以我可以把getVersionNameAdvanced定义成一个closure，然后赋值到一个外部属性
+   //下面的ext是谁的ext?
+   ext{//此段花括号中代码是闭包
+       //除了ext.xxx=value这种定义方法外，还可以使用ext{}这种书写方法。
+       //ext{}不是ext(Closure)对应的函数调用。但是ext{}中的{}确实是闭包
+       getVersionNameAdvanced = this.&getVersionNameAdvanced
+   }
+   ```
+
+   上面代码中有两个问题：
+
+   - project是谁？
+   - ext是谁的ext?
+
+   上面两个问题比较关键，我也是花了很长时间才搞清楚。这两个问题归结到一起，其实就是：
+
+   加载utils.gradle的Project对象和utils.gradle本身所代表的Script对象到底有什么关系？
+
+   我们在Groovy中也讲过怎么在一个Script中import另外一个Script中定义的类或者函数（见3.5 脚本类、文件I/O和XML操作一节）。在Gradle中，这一块的处理比Groovy要复杂，具体怎么搞我还没完全弄清楚，但是Project和utils.gradle对于的Script的对象的关系是：
+
+   - 当一个Project apply一个gradle文件的时候，这个gradle文件会转换成一个Script对象。这个，相信大家都已经知道了。
+   - Script中有一个delegate对象，这个delegate默认是加载（即调用apply）它的Project对象。但是，在apply函数中，有一个from参数，还有一个to参数(参考apply的API)。通过to参数，你可以把delegate对象指定为别的东西。
+   - delegate对象是什么意思？当你在Script中操作一些不是Script自己定义的变量，或者函数时候，gradle会到Script的delegate对象去找，看看有没有定义这些变量或函数。
+
+   现在你知道问题1,2和答案了：
+
+   - 问题1：project就是加载utils.gradle的project。由于posdevice有5个project，所以utils.gradle会分别加载到5个project中。所以，getVersionNameAdvanced才不用区分到底是哪个project。反正一个project有一个utils.gradle对应的Script。
+   - 问题2：ext：自然就是Project对应的ext了。此处为Project添加了一些closure。那么，在Project中就可以调用getVersionNameAdvanced函数了
+
+   比如：我在posdevice每个build.gradle中都有如下的代码：
+
+   ```groovy
+   tasks.getByName("assemble"){
+      it.doLast{
+          println "$project.name: After assemble, jar libs are copied tolocal repository"
+           copyOutput(true)  //copyOutput是utils.gradle输出的closure
+        }
+   }
+   ```
+
+   通过这种方式，我将一些常用的函数放到utils.gradle中，然后为加载它的Project设置ext属性。最后，Project中就可以调用这种赋值函数了！
+
+   注意：此处我研究的还不是很深，而且我个人感觉：
+
+   - 在Java和Groovy中：我们会把常用的函数放到一个辅助类和公共类中，然后在别的地方import并调用它们。
+
+   - 但是在Gradle，更正规的方法是在xxx.gradle中定义插件。然后通过添加Task的方式来完成工作。gradle的user guide有详细介绍如何实现自己的插件。
+
+3. Task介绍
+
+   Task是Gradle中的一种数据类型，它代表了一些要执行或者要干的工作。不同的插件可以添加不同的Task。每一个Task都需要和一个Project关联。
+
+   Task的API文档位于*https://docs.gradle.org/current/dsl/org.gradle.api.Task.html*。关于Task，我这里简单介绍下build.gradle中怎么写它，以及Task中一些常见的类型
+
+   关于Task。来看下面的例子：
+
+   ```groovy
+   //Task是和Project关联的，所以，我们要利用Project的task函数来创建一个Task
+   task myTask  //myTask是新建Task的名字
+   task myTask { configure closure }
+   task myType << { task action } //注意，<<符号是doLast的缩写
+   task myTask(type: SomeType)
+   task myTask(type: SomeType) { configure closure }
+   ```
+
+   上述代码中都用了Project的一个函数，名为task，注意：
+
+   - 一个Task包含若干Action。所以，Task有doFirst和doLast两个函数，用于添加需要最先执行的Action和需要和需要最后执行的Action。Action就是一个闭包。
+   - Task创建的时候可以指定Type，通过 `type:name` 表达。这是什么意思呢？其实就是告诉Gradle，这个新建的Task对象会从哪个基类Task派生。比如，Gradle本身提供了一些通用的Task，最常见的有Copy 任务。Copy是Gradle中的一个类。当我们：task myTask(type:Copy)的时候，创建的Task就是一个Copy Task。
+   - 当我们使用 taskmyTask{ xxx}的时候。花括号是一个closure。这会导致gradle在创建这个Task之后，返回给用户之前，会先执行closure的内容。
+   - 当我们使用task myTask << {xxx}的时候，我们创建了一个Task对象，同时把closure做为一个action加到这个Task的action队列中，并且告诉它“最后才执行这个closure”（*注意，<<符号是doLast的代表*）
+
+   下图是Project中关于task函数说明：
+
+   ![img](https://img-blog.csdn.net/20150905194548323?watermark/2/text/aHR0cDovL2Jsb2cuY3Nkbi5uZXQv/font/5a6L5L2T/fontsize/400/fill/I0JBQkFCMA==/dissolve/70/gravity/Center)
+
+   
+
+陆陆续续讲了这么些内容，我自己感觉都有点烦了。是得，Gradle用一整本书来讲都嫌不够呢。
+
+anyway，到目前为止，我介绍的都是一些比较基础的东西，还不是特别多。但是后续例子该涉及到的知识点都有了。下面我们直接上例子。这里有两个例子：
+
+- posdevice的例子
+- 单个project的例子
+
+#### 4.4.3 posdevice实例
+
+现在正是开始通过例子来介绍怎么玩gradle。这里要特别强调一点，根据Gradle的哲学。gradle文件中包含一些所谓的Script Block（姑且这么称它）。ScriptBlock作用是让我们来配置相关的信息。不同的SB有不同的需要配置的东西。这也是我最早说的行话。比如，源码对应的SB，就需要我们配置源码在哪个文件夹里。关于SB，我们后面将见识到！
+
+posdevice是一个multi project。下面包含5个Project。对于这种Project，请大家回想下我们该创建哪些文件？
+
+- setting.gradle是必不可少的
+- 根目录下的build.gradle。这个我们没讲过，因为posdevice的根目录本身不包含代码，而是包含其他5个子project。
+- 每个project目录下包含对于的build.gradle
+- 另外，我把常用的函数封装到一个名为utils.gradle的脚本里了。
+
+马上一个一个来看它们。
+
+1. utils.gradle
+
+   utils.gradle是我自己加的，为我们团队特意加了一些常见函数。主要代码如下：
+
+   ```groovy
+   import groovy.util.XmlSlurper  //解析XML时候要引入这个groovy的package
+    
+   def copyFile(String srcFile,dstFile){
+        ......//拷贝文件函数，用于将最后的生成物拷贝到指定的目录
+   }
+   def rmFile(String targetFile){
+       .....//删除指定目录中的文件
+   }
+    
+   def cleanOutput(boolean bJar = true){
+       ....//clean的时候清理
+   }
+    
+   def copyOutput(boolean bJar = true){
+       ....//copyOutput内部会调用copyFile完成一次build的产出物拷贝
+   }
+    
+   def getVersionNameAdvanced(){//老朋友
+      defxmlFile = project.file("AndroidManifest.xml")
+      defrootManifest = new XmlSlurper().parse(xmlFile)
+      returnrootManifest['@android:versionName']  
+   }
+    
+   //对于android library编译，我会disable所有的debug编译任务
+   def disableDebugBuild(){
+     //project.tasks包含了所有的tasks，下面的findAll是寻找那些名字中带debug的Task。
+     //返回值保存到targetTasks容器中
+     def targetTasks = project.tasks.findAll{task ->
+        task.name.contains("Debug")
+     }
+     //对满足条件的task，设置它为disable。如此这般，这个Task就不会被执行
+    targetTasks.each{
+        println"disable debug task  :${it.name}"
+       it.setEnabled false
+     }
+   }
+   //将函数设置为extra属性中去，这样，加载utils.gradle的Project就能调用此文件中定义的函数了
+   ext{
+       copyFile= this.&copyFile
+       rmFile =this.&rmFile
+      cleanOutput = this.&cleanOutput
+      copyOutput = this.&copyOutput
+      getVersionNameAdvanced = this.&getVersionNameAdvanced
+      disableDebugBuild = this.&disableDebugBuild
+   }
+   ```
+
+   
+
+2. settings.gradle
+
+3. posdevice build.gradle
+
+4. CPosDeviceSdk build.gradle
+
+5. CPosDeviceServerApk build.gradle
+
+6. 结果展示
+
+
+
+#### 4.4.4 单个project的例子
+
+## 5. 总结
+
+
+
+
+
+
+
