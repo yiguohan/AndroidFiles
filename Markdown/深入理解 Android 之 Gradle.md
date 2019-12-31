@@ -1285,27 +1285,430 @@ posdevice是一个multi project。下面包含5个Project。对于这种Project�
    }
    ```
 
-   
+   下图展示了被disable的Debug任务的部分信息
+
+   ![img](https://img-blog.csdn.net/20150905194607997?watermark/2/text/aHR0cDovL2Jsb2cuY3Nkbi5uZXQv/font/5a6L5L2T/fontsize/400/fill/I0JBQkFCMA==/dissolve/70/gravity/Center)
 
 2. settings.gradle
 
+   这个文件中我们该干什么？调用include把需要包含的子Project加进来。代码如下：
+
+   ```groovy
+   /*我们团队内部建立的编译环境初始化函数
+     这个函数的目的是
+     1  解析一个名为local.properties的文件，读取AndroidSDK和NDK的路径
+     2  获取最终产出物目录的路径。这样，编译完的apk或者jar包将拷贝到这个最终产出物目录中
+     3 获取Android SDK指定编译的版本
+   */
+   def initMinshengGradleEnvironment(){
+       println"initialize Minsheng Gradle Environment ....."
+      Properties properties = new Properties()
+      //local.properites也放在posdevice目录下
+       FilepropertyFile = new File(rootDir.getAbsolutePath()+ "/local.properties")
+      properties.load(propertyFile.newDataInputStream())
+       /*
+         根据Project、Gradle生命周期的介绍，settings对象的创建位于具体Project创建之前
+         而Gradle底对象已经创建好了。所以，我们把local.properties的信息读出来后，通过
+        extra属性的方式设置到gradle对象中
+         而具体Project在执行的时候，就可以直接从gradle对象中得到这些属性了！
+       */
+       gradle.ext.api =properties.getProperty('sdk.api')
+       gradle.ext.sdkDir =properties.getProperty('sdk.dir')
+        gradle.ext.ndkDir =properties.getProperty('ndk.dir')
+        gradle.ext.localDir =properties.getProperty('local.dir')
+       //指定debugkeystore文件的位置，debug版apk签名的时候会用到
+       gradle.ext.debugKeystore= properties.getProperty('debug.keystore')
+        ......
+       println"initialize Minsheng Gradle Environment completes..."
+   }
+   //初始化
+   initMinshengGradleEnvironment()
+   //添加子Project信息
+   include 'CPosSystemSdk','CPosDeviceSdk','CPosSdkDemo','CPosDeviceServerApk','CPosSystemSdkxxxPosImpl'
+   ```
+
+   注意，对于Android来说，local.properties文件是必须的，它的内容如下：
+
+   ```groovy
+   local.dir=/home/innost/workspace/minsheng-flat-dir/
+   //注意，根据Android Gradle的规范，只有下面两个属性是必须的，其余都是我自己加的
+   sdk.dir=/home/innost/workspace/android-aosp-sdk/
+   ndk.dir=/home/innost/workspace/android-aosp-ndk/
+   debug.keystore=/home/innost/workspace/tools/mykeystore.jks
+   sdk.api=android-19
+   ```
+
+   再次强调，*sdk.dir*和*ndk.dir*是Android Gradle必须要指定的，其他都是我自己加的属性。当然。不编译ndk，就不需要*ndk.dir*属性了
+
 3. posdevice build.gradle
+
+   作为multi-project根目录，一般情况下，它的build.gradle是做一些全局配置。来看我的build.gradle
+
+   ```groovy
+   //下面这个subprojects{}就是一个Script Block
+   subprojects {
+     println"Configure for $project.name" //遍历子Project，project变量对应每个子Project
+     buildscript {  //这也是一个SB
+       repositories {//repositories是一个SB
+          ///jcenter是一个函数，表示编译过程中依赖的库，所需的插件可以在jcenter仓库中
+          //下载。
+          jcenter()
+       }
+       dependencies { //SB
+           //dependencies表示我们编译的时候，依赖android开发的gradle插件。插件对应的
+          //class path是com.android.tools.build。版本是1.2.3
+           classpath'com.android.tools.build:gradle:1.2.3'
+       }
+      //为每个子Project加载utils.gradle 。当然，这句话可以放到buildscript花括号之后
+      applyfrom: rootProject.getRootDir().getAbsolutePath() + "/utils.gradle"
+    }//buildscript结束
+   ```
+
+   感觉解释得好苍白，SB在Gradle的API文档中也是有的。先来看Gradle定义了哪些SB。如下图所示：
+
+   ![img](https://img-blog.csdn.net/20150905194626346?watermark/2/text/aHR0cDovL2Jsb2cuY3Nkbi5uZXQv/font/5a6L5L2T/fontsize/400/fill/I0JBQkFCMA==/dissolve/70/gravity/Center)
+
+   你看，subprojects、dependencies、repositories都是SB。那么SB到底是什么？它是怎么完成所谓配置的呢？
+
+   仔细研究，你会发现SB后面都需要跟一个花括号，而花括号，嗯，我们感觉里边可能是一个Closure。由于上说，这些SB的Description都有“Configure xxx for this project”，所以很可能subprojects是一个函数，然后其参数是一个Closure。是这样的吗？
+
+   Absolutely right。只是这些函数你直接到Project API里不一定能找全。不过要是你好奇心重，不妨到https://docs.gradle.org/current/javadoc/，选择Index这一项，然后ctrl+f，输入图34中任何一个Block，你都会找到对应的函数。比如我替你找了几个API，如下图所示：
+
+   ![img](https://img-blog.csdn.net/20150905194642357?watermark/2/text/aHR0cDovL2Jsb2cuY3Nkbi5uZXQv/font/5a6L5L2T/fontsize/400/fill/I0JBQkFCMA==/dissolve/70/gravity/Center)
+
+   特别提示：当你下次看到一个不认识的SB的时候，就去看API吧。
+
+   下面来解释代码中的各个SB：
+
+   - subprojects：它会遍历posdevice中的每个子Project。在它的Closure中，默认参数是子Project对应的Project对象。由于其他SB都在subprojects花括号中，所以相当于对每个Project都配置了一些信息。
+   - buildscript：它的closure是在一个类型为ScriptHandler的对象上执行的。主意用来所依赖的classpath等信息。通过查看ScriptHandler API可知，在buildscript SB中，你可以调用ScriptHandler提供的repositories(Closure )、dependencies(Closure)函数。这也是为什么repositories和dependencies两个SB为什么要放在buildscript的花括号中的原因。明白了？这就是所谓的行话，得知道规矩。不知道规矩你就乱了。记不住规矩，又不知道查SDK，那么就彻底抓瞎，只能到网上到处找答案了！
+   - 关于repositories和dependencies，大家直接看API吧。后面碰到了具体代码我们再来介绍
 
 4. CPosDeviceSdk build.gradle
 
+   CPosDeviceSdk是一个Android Library。按Google的想法，Android Library编译出来的应该是一个AAR文件。但是我的项目有些特殊，我需要发布CPosDeviceSdk.jar包给其他人使用。jar在编译过程中会生成，但是它不属于Android Library的标准输出。在这种情况下，我需要在编译完成后，主动copy jar包到我自己设计的产出物目录中。
+
+   ```groovy
+   //Library工程必须加载此插件。注意，加载了Android插件就不要加载Java插件了。因为Android插件本身就是拓展了Java插件
+   apply plugin: 'com.android.library' 
+   //android的编译，增加了一种新类型的ScriptBlock-->android
+   android {
+          //你看，我在local.properties中设置的API版本号，就可以一次设置，多个Project使用了
+         //借助我特意设计的gradle.ext.api属性
+          compileSdkVersion =gradle.api  //compileSdkVersion和buildToolsVersion参数必须设置
+          buildToolsVersion  = "22.0.1"
+          sourceSets{ //配置源码路径。这个sourceSets是Java插件引入的
+          main{ //main：Android也用了
+              manifest.srcFile 'AndroidManifest.xml' //这是一个函数，设置manifest.srcFile
+              aidl.srcDirs=['src'] //设置aidl文件的目录
+              java.srcDirs=['src'] //设置java文件的目录
+           }
+        }
+      dependencies {  //配置依赖关系
+         //compile表示编译和运行时候需要的jar包，fileTree是一个函数，
+        //dir:'libs'，表示搜索目录的名称是libs。include:['*.jar']，表示搜索目录下满足*.jar名字的jar
+        //包都作为依赖jar文件
+          compile fileTree(dir: 'libs', include: ['*.jar'])
+      }
+   }  //android SB配置完了
+   //clean是一个Task的名字，这个Task好像是Java插件（这里是Android插件）引入的。
+   //dependsOn是一个函数，下面这句话的意思是 clean任务依赖cposCleanTask任务。所以
+   //当你gradle clean以执行clean Task的时候，cposCleanTask也会执行
+   clean.dependsOn 'cposCleanTask'
+   //创建一个Task，
+   task cposCleanTask() <<{
+       cleanOutput(true)  //cleanOutput是utils.gradle中通过extra属性设置的Closure
+   }
+   //前面说了，我要把jar包拷贝到指定的目录。对于Android编译，我一般指定gradle assemble
+   //它默认编译debug和release两种输出。所以，下面这个段代码表示：
+   //tasks代表一个Projects中的所有Task，是一个容器。getByName表示找到指定名称的任务。
+   //我这里要找的assemble任务，然后我通过doLast添加了一个Action。这个Action就是copy
+   //产出物到我设置的目标目录中去
+   tasks.getByName("assemble"){
+      it.doLast{
+          println "$project.name: After assemble, jar libs are copied tolocal repository"
+           copyOutput(true)
+        }
+   }
+   /*
+     因为我的项目只提供最终的release编译出来的Jar包给其他人，所以不需要编译debug版的东西
+     当Project创建完所有任务的有向图后，我通过afterEvaluate函数设置一个回调Closure。在这个回调
+     Closure里，我disable了所有Debug的Task
+   */
+   project.afterEvaluate{
+       disableDebugBuild()
+   }
+   ```
+
+   Android自己定义了好多ScriptBlock。Android定义的DSL参考文档在https://developer.android.com/tools/building/plugin-for-gradle.html下载。注意，它居然没有提供在线文档。
+
+   下图所示为Android的DSL参考信息。
+
+   ![img](https://img-blog.csdn.net/20150905194701217?watermark/2/text/aHR0cDovL2Jsb2cuY3Nkbi5uZXQv/font/5a6L5L2T/fontsize/400/fill/I0JBQkFCMA==/dissolve/70/gravity/Center)
+
+   下图为buildToolsVersion和compileSdkVersion的说明：
+
+   ![img](https://img-blog.csdn.net/20150905194720267?watermark/2/text/aHR0cDovL2Jsb2cuY3Nkbi5uZXQv/font/5a6L5L2T/fontsize/400/fill/I0JBQkFCMA==/dissolve/70/gravity/Center)
+
+   从上图可知，这两个变量是必须要设置的.....
+
 5. CPosDeviceServerApk build.gradle
 
+   再来看一个APK的build，它包含NDK的编译，并且还要签名。根据项目的需求，我们只能签debug版的，而release版的签名得发布unsigned包给领导签名。另外，CPosDeviceServerAPK依赖CPosDeviceSdk。
+
+   虽然我可以先编译CPosDeviceSdk，得到对应的jar包，然后设置CPosDeviceServerApk直接依赖这个jar包就好。但是我更希望CPosDeviceServerApk能直接依赖于CPosDeviceSdk这个工程。这样，整个posdevice可以做到这几个Project的依赖关系是最新的。
+
+   ```groovy
+   apply plugin: 'com.android.application'  //APK编译必须加载这个插件
+   android {
+         compileSdkVersion gradle.api
+         buildToolsVersion "22.0.1"
+         sourceSets{  //差不多的设置
+          main{
+              manifest.srcFile 'AndroidManifest.xml'
+             //通过设置jni目录为空，我们可不使用apk插件的jni编译功能。为什么？因为据说
+            //APK插件的jni功能好像不是很好使....晕菜
+             jni.srcDirs = [] 
+              jniLibs.srcDir 'libs'
+               aidl.srcDirs=['src']
+              java.srcDirs=['src']
+              res.srcDirs=['res']
+           }
+       }//main结束
+      signingConfigs { //设置签名信息配置
+          debug {  //如果我们在local.properties设置使用特殊的keystore，则使用它
+              //下面这些设置，无非是函数调用....请务必阅读API文档
+              if(project.gradle.debugKeystore != null){
+                 storeFile file("file://${project.gradle.debugKeystore}")
+                 storePassword "android"
+                 keyAlias "androiddebugkey"
+                 keyPassword "android"
+              }
+           }
+      }//signingConfigs结束
+        buildTypes {
+          debug {
+              signingConfig signingConfigs.debug
+              jniDebuggable false
+           }
+       }//buildTypes结束
+      dependencies {
+           //compile：project函数可指定依赖multi-project中的某个子project
+          compile project(':CPosDeviceSdk')
+          compile fileTree(dir: 'libs', include: ['*.jar'])
+      } //dependices结束
+     repositories{
+      flatDir {//flatDir：告诉gradle，编译中依赖的jar包存储在dirs指定的目录
+              name "minsheng-gradle-local-repository"
+               dirsgradle.LOCAL_JAR_OUT //LOCAL_JAR_OUT是我存放编译出来的jar包的位置
+      }
+     }//repositories结束
+   }//android结束
+   /*
+      创建一个Task，类型是Exec，这表明它会执行一个命令。我这里让他执行ndk的
+      ndk-build命令，用于编译ndk。关于Exec类型的Task，请自行脑补Gradle的API
+   */
+   //注意此处创建task的方法，是直接{}喔，那么它后面的tasks.withType(JavaCompile)
+   //设置的依赖关系，还有意义吗？Think！如果你能想明白，gradle掌握也就差不多了
+   task buildNative(type: Exec, description: 'CompileJNI source via NDK') {
+          if(project.gradle.ndkDir == null) //看看有没有指定ndk.dir路径
+             println "CANNOT Build NDK"
+          else{
+               commandLine "/${project.gradle.ndkDir}/ndk-build",
+                  '-C', file('jni').absolutePath,
+                  '-j', Runtime.runtime.availableProcessors(),
+                  'all', 'NDK_DEBUG=0'
+           }
+     }
+    tasks.withType(JavaCompile) {
+          compileTask -> compileTask.dependsOn buildNative
+     }
+     ......  
+    //对于APK，除了拷贝APK文件到指定目录外，我还特意为它们加上了自动版本命名的功能
+    tasks.getByName("assemble"){
+          it.doLast{
+          println "$project.name: After assemble, jar libs are copied tolocal repository"
+          project.ext.versionName = android.defaultConfig.versionName
+          println "\t versionName = $versionName"
+          copyOutput(false)
+        }
+   }
+   ```
+
+   
+
 6. 结果展示
+
+   在posdevice下执行gradle assemble命令，最终的输出文件都会拷贝到我指定的目录，结果下图所示
+
+   ![img](https://img-blog.csdn.net/20150905194741289?watermark/2/text/aHR0cDovL2Jsb2cuY3Nkbi5uZXQv/font/5a6L5L2T/fontsize/400/fill/I0JBQkFCMA==/dissolve/70/gravity/Center)
+
+   上图所示为posdevice gradle assemble的执行结果：
+
+   - library包都编译release版的，copy到xxx/javaLib目录下
+   - apk编译debug和release-unsigned版的，copy到apps目录下
+   - 所有产出物都自动从AndroidManifest.xml中提取versionName。
 
 
 
 #### 4.4.4 单个project的例子
 
+下面这个实例也是来自一个实际的APP。这个APP对应的是一个单独的Project。但是根据我前面的建议，我会把它改造成支持Multi-ProjectsBuild的样子。即在工程目录下放一个settings.build。
+
+另外，这个app有一个特点。它有三个版本，分别是debug、release和demo。这三个版本对应的代码都完全一样，但是在运行的时候需要从assets/runtime_config文件中读取参数。参数不同，则运行的时候会跳转到debug、release或者demo的逻辑上。
+
+注意：我知道assets/runtime_config这种做法不decent，但，这是一个既有项目，我们只能做小范围的适配，而不是伤筋动骨改用更好的方法。另外，从未来的需求来看，暂时也没有大改的必要。
+
+引入gradle后，我们该如何处理呢？
+
+解决方法是：在编译build、release和demo版本前，在build.gradle中自动设置runtime_config的内容。代码如下所示：
+
+```groovy
+//build.gradle
+apply plugin: 'com.android.application'  //加载APP插件
+//加载utils.gradle
+apply from:rootProject.getRootDir().getAbsolutePath() + "/utils.gradle"
+//buildscript设置android app插件的位置
+buildscript {
+   repositories { jcenter() }
+   dependencies { classpath 'com.android.tools.build:gradle:1.2.3' }
+}
+//androidScriptBlock
+android {
+   compileSdkVersion gradle.api
+   buildToolsVersion "22.0.1"
+   sourceSets{//源码设置SB
+        main{
+           manifest.srcFile 'AndroidManifest.xml'
+           jni.srcDirs = []
+           jniLibs.srcDir 'libs'
+           aidl.srcDirs=['src']
+           java.srcDirs=['src']
+           res.srcDirs=['res']
+           assets.srcDirs = ['assets'] //多了一个assets目录
+        }
+    }
+   signingConfigs {//签名设置
+       debug {  //debug对应的SB。注意
+           if(project.gradle.debugKeystore != null){
+               storeFile file("file://${project.gradle.debugKeystore}")
+               storePassword "android"
+               keyAlias "androiddebugkey"
+               keyPassword "android"
+           }
+        }
+    }
+    /*
+     最关键的内容来了： buildTypesScriptBlock.
+     buildTypes和上面的signingConfigs，当我们在build.gradle中通过{}配置它的时候，
+     其背后的所代表的对象是NamedDomainObjectContainer<BuildType> 和
+     NamedDomainObjectContainer<SigningConfig>
+     注意，NamedDomainObjectContainer<BuildType/或者SigningConfig>是一种容器，
+     容器的元素是BuildType或者SigningConfig。我们在debug{}要填充BuildType或者
+    SigningConfig所包的元素，比如storePassword就是SigningConfig类的成员。而proguardFile等
+    是BuildType的成员。
+    那么，为什么要使用NamedDomainObjectContainer这种数据结构呢？因为往这种容器里
+    添加元素可以采用这样的方法： 比如signingConfig为例
+    signingConfig{//这是一个NamedDomainObjectContainer<SigningConfig>
+       test1{//新建一个名为test1的SigningConfig元素，然后添加到容器里
+         //在这个花括号中设置SigningConfig的成员变量的值
+       }
+      test2{//新建一个名为test2的SigningConfig元素，然后添加到容器里
+         //在这个花括号中设置SigningConfig的成员变量的值
+      }
+    }
+    在buildTypes中，Android默认为这几个NamedDomainObjectContainer添加了
+    debug和release对应的对象。如果我们再添加别的名字的东西，那么gradleassemble的时候
+    也会编译这个名字的apk出来。比如，我添加一个名为test的buildTypes，那么gradle assemble
+    就会编译一个xxx-test-yy.apk。在此，test就好像debug、release一样。
+   */
+   buildTypes{
+        debug{ //修改debug的signingConfig为signingConfig.debug配置
+           signingConfig signingConfigs.debug
+        }
+        demo{ //demo版需要混淆
+           proguardFile 'proguard-project.txt'
+           signingConfig signingConfigs.debug
+        }
+       //release版没有设置，所以默认没有签名，没有混淆
+    }
+      ......//其他和posdevice 类似的处理。来看如何动态生成runtime_config文件
+   def  runtime_config_file = 'assets/runtime_config'
+   /*
+   我们在gradle解析完整个任务之后，找到对应的Task，然后在里边添加一个doFirst Action
+   这样能确保编译开始的时候，我们就把runtime_config文件准备好了。
+   注意，必须在afterEvaluate里边才能做，否则gradle没有建立完任务有向图，你是找不到
+   什么preDebugBuild之类的任务的
+   */
+   project.afterEvaluate{
+      //找到preDebugBuild任务，然后添加一个Action 
+      tasks.getByName("preDebugBuild"){
+           it.doFirst{
+               println "generate debug configuration for ${project.name}"
+               def configFile = new File(runtime_config_file)
+               configFile.withOutputStream{os->
+                   os << I am Debug\n'  //往配置文件里写 I am Debug
+                }
+           }
+        }
+       //找到preReleaseBuild任务
+       tasks.getByName("preReleaseBuild"){
+           it.doFirst{
+               println "generate release configuration for ${project.name}"
+               def configFile = new File(runtime_config_file)
+               configFile.withOutputStream{os->
+                   os << I am release\n'
+               }
+           }
+        }
+       //找到preDemoBuild。这个任务明显是因为我们在buildType里添加了一个demo的元素
+      //所以Android APP插件自动为我们生成的
+       tasks.getByName("preDemoBuild"){
+           it.doFirst{
+               println "generate offlinedemo configuration for${project.name}"
+               def configFile = new File(runtime_config_file)
+               configFile.withOutputStream{os->
+                   os << I am Demo\n'
+               }
+            }
+        }
+    }
+}
+ .....//copyOutput
+```
+
+最终的结果如下图所示：
+
+![img](https://img-blog.csdn.net/20150905200639926?watermark/2/text/aHR0cDovL2Jsb2cuY3Nkbi5uZXQv/font/5a6L5L2T/fontsize/400/fill/I0JBQkFCMA==/dissolve/70/gravity/Center)
+
+几个问题，为什么我知道有preXXXBuild这样的任务？
+
+> 答案：gradle tasks --all查看所有任务。然后，多尝试几次，直到成功
+
 ## 5. 总结
 
+到此，我个人觉得Gradle相关的内容都讲完了。很难相信我仅花了1个小时不到的时间就为实例2添加了gradle编译支持。在一周以前，我还觉得这是个心病。回想学习gradle的一个月时间里，走过不少弯路，求解问题的思路也和最开始不一样：
 
+- 最开始的时候，我一直把gradle当做脚本看。然后到处到网上找怎么配置gradle。可能能编译成功，但是完全不知道为什么。比如NameDomainObjectContainer，为什么有debug、release。能自己加别的吗？不知道怎么加，没有章法，没有参考。出了问题只能google，找到一个解法，试一试，成功就不管。这么搞，心里不踏实。
 
+- 另外，对语法不熟悉，尤其是Groovy语法，虽然看了下快速教材，但总感觉一到gradle就看不懂。主要问题还是闭包，比如Groovy那一节写得文件拷贝的例子中的withOutputStream，还有gradle中的withType，都是些啥玩意啊？
 
+- 所以后来下决心先把Groovy学会，主要是把自己暴露在闭包里边。另外，Groovy是一门语言，总得有SDK说明吧。写了几个例子，慢慢体会到Groovy的好处，也熟悉Groovy的语法了。
 
+- 接着开始看Gradle。Gradle有几本书，我看过Gradle in Action。说实话，看得非常痛苦。现在想起来，Gradle其实比较简单，知道它的生命周期，知道它怎么解析脚本，知道它的API，几乎很快就能干活。而Gradle In Action一上来就很细，而且没有从API角度介绍。说个很有趣的事情，书中有个类似下面的例子
 
+  ```groovy
+  task myTask << {
+      println 'I am myTask'
+  }
+  ```
 
+  
+
+  书中说，如果代码没有加<<，则这个任务在脚本initialization（也就是你无论执行什么任务，这个任务都会被执行，I am myTask都会被输出）的时候执行，如果加了<<，则在gradle myTask后才执行。
+
+  尼玛我开始完全不知道为什么，死记硬背。现在你明白了吗？？？？
+
+  这和我们调用task这个函数的方式有关！如果没有<<，则闭包在task函数返回前会执行，而如果加了<<，则变成调用myTask.doLast添加一个Action了，自然它会等到grdle myTask的时候才会执行！
+
+  现在想起这个事情我还是很愤怒，API都说很清楚了......而且，如果你把Gradle当做编程框架来看，对于我们这些程序员来说，写这几百行代码，那还算是事嘛？？
